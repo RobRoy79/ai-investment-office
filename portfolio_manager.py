@@ -1,9 +1,10 @@
 
+
 """
 AI Investment Office
 Portfolio Manager
 
-Tracks simulated cash, holdings and portfolio value.
+Tracks simulated cash, holdings and realized profit/loss.
 Paper trading only. No real broker transactions.
 """
 
@@ -22,63 +23,112 @@ def load_trades():
         return list(csv.DictReader(file))
 
 
-def calculate_portfolio():
+def calculate_portfolio(starting_capital=STARTING_CAPITAL):
+
+    if starting_capital <= 0:
+        raise ValueError("Starting capital must be positive.")
+
     trades = load_trades()
 
-    cash = STARTING_CAPITAL
+    cash = float(starting_capital)
     holdings = {}
+    rejected_trades = []
+    realized_profit_loss = 0.0
 
-    for trade in trades:
-        ticker = trade["ticker"]
-        action = trade["action"]
-        quantity = float(trade["quantity"])
-        price = float(trade["price"])
-        value = quantity * price
+    for row_number, trade in enumerate(trades, start=2):
 
-        if ticker not in holdings:
-            holdings[ticker] = {
-                "quantity": 0.0,
-                "invested": 0.0
-            }
+        try:
+            ticker = trade["ticker"].strip().upper()
+            asset_type = trade["asset_type"].strip().lower()
+            action = trade["action"].strip().upper()
+            quantity = float(trade["quantity"])
+            price = float(trade["price"])
 
-        if action == "BUY":
-            if value > cash:
-                continue
+            if not ticker or not asset_type:
+                raise ValueError("Missing ticker or asset type.")
 
-            cash -= value
-            holdings[ticker]["quantity"] += quantity
-            holdings[ticker]["invested"] += value
+            if action not in ("BUY", "SELL"):
+                raise ValueError("Invalid trade action.")
 
-        elif action == "SELL":
-            current_quantity = holdings[ticker]["quantity"]
+            if quantity <= 0 or price <= 0:
+                raise ValueError("Quantity and price must be positive.")
 
-            if quantity > current_quantity:
-                continue
+            value = quantity * price
+            key = (asset_type, ticker)
 
-            average_cost = (
-                holdings[ticker]["invested"] / current_quantity
-                if current_quantity > 0 else 0
-            )
+            if key not in holdings:
+                holdings[key] = {
+                    "ticker": ticker,
+                    "asset_type": asset_type,
+                    "quantity": 0.0,
+                    "invested": 0.0
+                }
 
-            holdings[ticker]["quantity"] -= quantity
-            holdings[ticker]["invested"] -= average_cost * quantity
-            cash += value
+            position = holdings[key]
 
-    active_holdings = {
-        ticker: data
-        for ticker, data in holdings.items()
+            if action == "BUY":
+
+                if value > cash:
+                    raise ValueError("Insufficient cash for this purchase.")
+
+                cash -= value
+                position["quantity"] += quantity
+                position["invested"] += value
+
+            elif action == "SELL":
+
+                if quantity > position["quantity"]:
+                    raise ValueError("Not enough units to sell.")
+
+                average_cost = (
+                    position["invested"] / position["quantity"]
+                )
+
+                cost_of_sold_units = average_cost * quantity
+
+                realized_profit_loss += value - cost_of_sold_units
+
+                position["quantity"] -= quantity
+                position["invested"] -= cost_of_sold_units
+                cash += value
+
+        except (KeyError, ValueError, TypeError) as error:
+            rejected_trades.append({
+                "row": row_number,
+                "reason": str(error)
+            })
+
+    active_holdings = [
+        {
+            "ticker": data["ticker"],
+            "asset_type": data["asset_type"],
+            "quantity": round(data["quantity"], 6),
+            "invested": round(data["invested"], 2),
+            "average_cost": round(
+                data["invested"] / data["quantity"], 2
+            ) if data["quantity"] > 0 else 0
+        }
+        for data in holdings.values()
         if data["quantity"] > 0
-    }
+    ]
+
+    total_invested = sum(
+        position["invested"] for position in active_holdings
+    )
 
     return {
-        "starting_capital": STARTING_CAPITAL,
+        "starting_capital": round(starting_capital, 2),
         "cash": round(cash, 2),
+        "total_invested": round(total_invested, 2),
+        "realized_profit_loss": round(realized_profit_loss, 2),
         "holdings": active_holdings,
-        "number_of_positions": len(active_holdings)
+        "number_of_positions": len(active_holdings),
+        "rejected_trades": rejected_trades
     }
 
 
 if __name__ == "__main__":
+
     portfolio = calculate_portfolio()
 
     print("AI INVESTMENT OFFICE - PORTFOLIO")
