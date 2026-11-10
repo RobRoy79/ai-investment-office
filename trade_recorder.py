@@ -1,10 +1,11 @@
 
+
 """
 AI Investment Office
 Paper Trading Trade Recorder
 
 Records simulated trades only.
-Checks available cash and holdings before recording.
+Enforces portfolio and position risk limits.
 Never sends real orders to a broker.
 """
 
@@ -15,6 +16,7 @@ from datetime import datetime, timezone
 
 from investment_rules import validate_investment
 from portfolio_manager import calculate_portfolio
+from risk_manager import RiskSettings
 
 TRADE_LOG = "paper_trades.csv"
 STARTING_CAPITAL = 10000.0
@@ -29,6 +31,10 @@ FIELDNAMES = [
     "value",
     "status"
 ]
+
+RISK_SETTINGS = RiskSettings(
+    starting_capital=STARTING_CAPITAL
+)
 
 
 def record_paper_trade(
@@ -52,6 +58,19 @@ def record_paper_trade(
             "message": "Ticker and asset type must be text."
         }
 
+    if not all(
+        isinstance(flag, bool)
+        for flag in (
+            isk_eligible,
+            available_at_broker,
+            is_leveraged
+        )
+    ):
+        return {
+            "success": False,
+            "message": "Investment verification values must be true or false."
+        }
+
     action = action.upper().strip()
     ticker = ticker.upper().strip()
     asset_type = asset_type.lower().strip()
@@ -68,10 +87,7 @@ def record_paper_trade(
             "message": "Ticker and asset type cannot be empty."
         }
 
-    if (
-        isinstance(quantity, bool)
-        or isinstance(price, bool)
-    ):
+    if isinstance(quantity, bool) or isinstance(price, bool):
         return {
             "success": False,
             "message": "Quantity and price must be numeric."
@@ -98,6 +114,23 @@ def record_paper_trade(
             "message": "Quantity and price must be positive."
         }
 
+    raw_value = quantity * price
+
+    if not math.isfinite(raw_value):
+        return {
+            "success": False,
+            "message": "Trade value is too large or invalid."
+        }
+
+    value = round(raw_value, 2)
+
+    if value <= 0:
+        return {
+            "success": False,
+            "message": "Trade value must be at least 0.01 SEK."
+        }
+
+    # Verify investment rules
     check = validate_investment(
         asset_type=asset_type,
         isk_eligible=isk_eligible,
@@ -111,18 +144,22 @@ def record_paper_trade(
             "message": check["reason"]
         }
 
-    value = round(quantity * price, 2)
-
-    # Check the existing portfolio before recording the trade.
+    # Load and verify the current portfolio
     try:
         portfolio = calculate_portfolio(STARTING_CAPITAL)
+
+        cash = portfolio["cash"]
+        total_invested = portfolio["total_invested"]
+        holdings = portfolio["holdings"]
+        rejected_trades = portfolio["rejected_trades"]
+
     except (OSError, ValueError, KeyError, TypeError) as error:
         return {
             "success": False,
             "message": f"Could not verify portfolio: {error}"
         }
 
-    if portfolio["rejected_trades"]:
+    if rejected_trades:
         return {
             "success": False,
             "message": (
@@ -131,21 +168,61 @@ def record_paper_trade(
             )
         }
 
-    if action == "BUY" and value > portfolio["cash"]:
-        return {
-            "success": False,
-            "message": "Insufficient cash for this purchase."
-        }
+    # Find an existing matching position
+    matching_position = next(
+        (
+            position for position in holdings
+            if position["ticker"] == ticker
+            and position["asset_type"] == asset_type
+        ),
+        None
+    )
 
-    if action == "SELL":
-        matching_position = next(
-            (
-                position for position in portfolio["holdings"]
-                if position["ticker"] == ticker
-                and position["asset_type"] == asset_type
-            ),
-            None
+    if action == "BUY":
+
+        if value > cash:
+            return {
+                "success": False,
+                "message": "Insufficient cash for this purchase."
+            }
+
+        # Maximum 20% of starting capital in one position
+        existing_position_value = (
+            matching_position["invested"]
+            if matching_position else 0.0
         )
+
+        new_position_value = existing_position_value + value
+
+        maximum_position = (
+            STARTING_CAPITAL * RISK_SETTINGS.max_position_percent
+        )
+
+        if new_position_value > maximum_position + 0.001:
+            return {
+                "success": False,
+                "message": (
+                    f"Position limit exceeded. Maximum allowed "
+                    f"per position is {maximum_position:.2f} SEK."
+                )
+            }
+
+        # Maximum 80% of starting capital invested in total
+        maximum_exposure = (
+            STARTING_CAPITAL * RISK_SETTINGS.max_total_exposure
+        )
+
+        if total_invested + value > maximum_exposure + 0.001:
+            return {
+                "success": False,
+                "message": (
+                    f"Portfolio exposure limit exceeded. "
+                    f"Maximum total investment is "
+                    f"{maximum_exposure:.2f} SEK."
+                )
+            }
+
+    elif action == "SELL":
 
         if matching_position is None:
             return {
@@ -153,18 +230,22 @@ def record_paper_trade(
                 "message": "No matching position exists to sell."
             }
 
-        if quantity > matching_position["quantity"]:
+        if quantity > matching_position["quantity"] + 0.000001:
             return {
                 "success": False,
                 "message": "Not enough units available to sell."
             }
 
-    # Check that the CSV file has the expected structure.
+    # Check CSV structure before writing
     file_exists = os.path.exists(TRADE_LOG)
-    write_header = not file_exists or os.path.getsize(TRADE_LOG) == 0
 
-    if file_exists and not write_header:
-        try:
+    try:
+        write_header = (
+            not file_exists
+            or os.path.getsize(TRADE_LOG) == 0
+        )
+
+        if file_exists and not write_header:
             with open(
                 TRADE_LOG, "r", newline="", encoding="utf-8"
             ) as file:
@@ -177,11 +258,11 @@ def record_paper_trade(
                     "message": "Trade log has an unexpected CSV header."
                 }
 
-        except OSError as error:
-            return {
-                "success": False,
-                "message": f"Could not check trade log: {error}"
-            }
+    except OSError as error:
+        return {
+            "success": False,
+            "message": f"Could not check trade log: {error}"
+        }
 
     trade = {
         "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -232,4 +313,3 @@ if __name__ == "__main__":
 
     print("AI INVESTMENT OFFICE - PAPER TRADING")
     print(result)
-
