@@ -1,4 +1,5 @@
 
+
 """
 AI Investment Office
 Agent Manager
@@ -7,6 +8,8 @@ Coordinates technical and news analysis.
 Rule-based research only.
 No live AI model or real broker orders.
 """
+
+import math
 
 from signal_engine import generate_signal
 from news_analyzer import analyze_news
@@ -19,60 +22,67 @@ def run_analysis(
     sma50: float,
     headlines: list
 ) -> dict:
-    """Combines technical signals and news analysis."""
 
     if not isinstance(ticker, str) or not ticker.strip():
         return {
             "success": False,
             "recommendation": "HOLD",
-            "reason": "A valid ticker is required.",
+            "explanation": "A valid ticker is required.",
             "status": "RESEARCH ONLY - NOT A REAL ORDER"
         }
 
-    if not isinstance(headlines, list):
-        headlines = []
-
     ticker = ticker.strip().upper()
 
-    # Technical analysis
+    # Validate market data before analysis
+    try:
+        prices = [
+            float(current_price),
+            float(sma20),
+            float(sma50)
+        ]
+
+        if any(
+            not math.isfinite(value) or value <= 0
+            for value in prices
+        ):
+            raise ValueError("Invalid prices")
+
+    except (TypeError, ValueError):
+        return {
+            "success": False,
+            "ticker": ticker,
+            "recommendation": "HOLD",
+            "explanation": "Market data is invalid.",
+            "status": "RESEARCH ONLY - NOT A REAL ORDER"
+        }
+
+    current_price, sma20, sma50 = prices
+
     technical = generate_signal(
         current_price=current_price,
         sma20=sma20,
         sma50=sma50
     )
 
-    # Never issue BUY or SELL if market data is invalid
-    if technical["score"] == 0 and technical["strength"] == 0:
-        return {
-            "success": False,
-            "ticker": ticker,
-            "recommendation": "HOLD",
-            "technical_signal": "HOLD",
-            "technical_score": 0,
-            "news_score": 0,
-            "combined_score": 0,
-            "news_analysis": [],
-            "explanation": (
-                "Technical analysis could not be completed. "
-                "News cannot override invalid market data."
-            ),
-            "status": "RESEARCH ONLY - NOT A REAL ORDER"
-        }
+    # Analyze valid news headlines only
+    if not isinstance(headlines, list):
+        headlines = []
 
-    # News analysis
-    news_results = []
+    news_results = [
+        analyze_news(headline)
+        for headline in headlines
+        if isinstance(headline, str) and headline.strip()
+    ]
 
-    for headline in headlines:
-        if isinstance(headline, str) and headline.strip():
-            news_results.append(analyze_news(headline))
-
-    news_score = sum(
+    raw_news_score = sum(
         item["score"] for item in news_results
     )
 
+    # Prevent many headlines from dominating the analysis
+    news_score = max(-2, min(2, raw_news_score))
+
     combined_score = technical["score"] + news_score
 
-    # Combined recommendation
     if combined_score >= 2:
         recommendation = "BUY"
     elif combined_score <= -2:
@@ -91,9 +101,9 @@ def run_analysis(
         "combined_score": combined_score,
         "news_analysis": news_results,
         "explanation": (
-            "Recommendation combines technical indicators "
-            "and simple keyword-based news analysis. "
-            "It is not a guaranteed prediction."
+            "Combines technical indicators and keyword-based "
+            "news analysis. News influence is limited. "
+            "This is not an AI prediction or guaranteed result."
         ),
         "status": "RESEARCH ONLY - NOT A REAL ORDER"
     }
