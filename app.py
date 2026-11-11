@@ -1,11 +1,21 @@
+
 import os
-st.write("FILER I APPEN:", os.listdir())
 import streamlit as st
 import pandas as pd
 
 from datetime import datetime
 from discovery_engine import run_discovery_scan
-from fundamental_analyzer import analyze_fundamentals
+
+# Fundamental Analyzer – appen ska kunna starta även
+# om denna fil ännu inte finns i Streamlits miljö.
+try:
+    from fundamental_analyzer import analyze_fundamentals
+    FUNDAMENTAL_ANALYZER_AVAILABLE = True
+    FUNDAMENTAL_IMPORT_ERROR = None
+except ModuleNotFoundError as error:
+    analyze_fundamentals = None
+    FUNDAMENTAL_ANALYZER_AVAILABLE = False
+    FUNDAMENTAL_IMPORT_ERROR = str(error)
 
 
 # --------------------------------------------------
@@ -65,6 +75,24 @@ st.divider()
 
 
 # --------------------------------------------------
+# TEMPORARY FILE DIAGNOSTICS
+# --------------------------------------------------
+
+with st.expander("Teknisk filkontroll"):
+    files = sorted(os.listdir())
+    st.write("Filer som Streamlit hittar:")
+    st.code("\n".join(files))
+
+    if not FUNDAMENTAL_ANALYZER_AVAILABLE:
+        st.error(
+            "Fundamental Analyzer kunde inte laddas. "
+            "Kontrollera att fundamental_analyzer.py "
+            "finns i projektets rotmapp."
+        )
+        st.code(FUNDAMENTAL_IMPORT_ERROR)
+
+
+# --------------------------------------------------
 # DASHBOARD
 # --------------------------------------------------
 
@@ -108,21 +136,17 @@ if st.button(
     ):
 
         try:
-
             result = run_discovery_scan(
                 dynamic_discovery=True,
                 max_per_screen=20
             )
 
             st.session_state["discovery_result"] = result
-
-            # Clear old fundamental results after a new scan
             st.session_state.pop("fundamental_result", None)
 
             st.success("Skanningen är genomförd.")
 
         except Exception as error:
-
             st.error("Ett fel uppstod under skanningen.")
             st.exception(error)
 
@@ -136,7 +160,6 @@ result = st.session_state.get("discovery_result")
 if result:
 
     st.divider()
-
     st.subheader("📊 Sammanfattning")
 
     discovery_info = result.get("discovery_info") or {}
@@ -170,7 +193,6 @@ if result:
     # ----------------------------------------------
 
     st.divider()
-
     st.subheader("🕵️ Resultat från de dynamiska sökningarna")
 
     screen_results = discovery_info.get("screen_results", {})
@@ -182,17 +204,12 @@ if result:
     }
 
     if screen_results:
-
         for screen_name, count in screen_results.items():
-
             readable_name = screen_names.get(
                 screen_name, screen_name
             )
-
             st.write(f"**{readable_name}:** {count} aktier hittades")
-
     else:
-
         st.warning(
             "Inga resultat från screeningarna kunde visas."
         )
@@ -200,21 +217,16 @@ if result:
     screening_errors = discovery_info.get("errors", [])
 
     if screening_errors:
-
         st.error(
             f"{len(screening_errors)} sökning(ar) rapporterade fel."
         )
 
         for error in screening_errors:
-
             with st.expander(
                 f"Fel i sökning: {error.get('screen', 'Okänd')}"
             ):
-
                 st.code(error.get("error", "Okänt fel"))
-
     else:
-
         st.success(
             "Inga tekniska fel rapporterades av screeningarna."
         )
@@ -224,7 +236,6 @@ if result:
     # ----------------------------------------------
 
     st.divider()
-
     st.subheader("📈 Analyserade aktier")
 
     candidates = result.get("candidates", [])
@@ -245,7 +256,8 @@ if result:
             "volatility"
         ]
 
-        df = df[display_columns].copy()
+        # Missing columns should not crash the app.
+        df = df.reindex(columns=display_columns)
 
         df = df.rename(columns={
             "company": "Företag",
@@ -269,17 +281,21 @@ if result:
 
         for candidate in candidates[:5]:
 
-            with st.expander(
-                f"{candidate['company']} – "
-                f"{candidate['discovery_score']} poäng"
-            ):
+            company = candidate.get("company", "Okänt företag")
+            symbol = candidate.get("symbol", "Okänd symbol")
+            score = candidate.get("discovery_score", "Saknas")
 
-                st.write(f"**Aktiesymbol:** {candidate['symbol']}")
+            with st.expander(f"{company} – {score} poäng"):
+
+                st.write(f"**Aktiesymbol:** {symbol}")
                 st.write(
-                    f"**Analysprioritet:** {candidate['classification']}"
+                    f"**Analysprioritet:** "
+                    f"{candidate.get('classification', 'Saknas')}"
                 )
-                st.write(f"**Senaste kurs:** {candidate['price']}")
-                st.write(f"**RSI:** {candidate['rsi']}")
+                st.write(
+                    f"**Senaste kurs:** {candidate.get('price', 'Saknas')}"
+                )
+                st.write(f"**RSI:** {candidate.get('rsi', 'Saknas')}")
 
                 st.write("**Identifierade faktorer:**")
 
@@ -287,18 +303,15 @@ if result:
                     st.write(f"• {reason}")
 
     else:
-
         st.warning("Inga aktier kunde analyseras.")
 
     failed_stocks = result.get("errors", [])
 
     if failed_stocks:
-
         with st.expander(
             f"Visa aktier som inte kunde analyseras ({len(failed_stocks)})"
         ):
-
-            st.write(", ".join(failed_stocks))
+            st.write(", ".join(map(str, failed_stocks)))
 
     st.caption(
         "Senaste skanning: "
@@ -311,49 +324,51 @@ if result:
 # --------------------------------------------------
 
 st.divider()
-
 st.subheader("🏦 Fundamental Analyzer")
 
-st.write(
-    "Här testar vi den nya fundamentala analysmotorn "
-    "på ett bolag innan vi kopplar in hela aktieuniversumet."
-)
+if FUNDAMENTAL_ANALYZER_AVAILABLE:
 
-test_symbol = st.text_input(
-    "Aktiesymbol att testa",
-    value="MSFT",
-    help="Exempel: MSFT, VOLV-B.ST eller NOVO-B.CO"
-).strip().upper()
+    st.write(
+        "Här testar vi den fundamentala analysmotorn "
+        "på ett bolag innan vi kopplar in hela aktieuniversumet."
+    )
 
-if st.button(
-    "Testa fundamental analys",
-    use_container_width=True
-):
+    test_symbol = st.text_input(
+        "Aktiesymbol att testa",
+        value="MSFT",
+        help="Exempel: MSFT, VOLV-B.ST eller NOVO-B.CO"
+    ).strip().upper()
 
-    if not test_symbol:
+    if st.button(
+        "Testa fundamental analys",
+        use_container_width=True
+    ):
 
-        st.warning("Ange en aktiesymbol först.")
+        if not test_symbol:
+            st.warning("Ange en aktiesymbol först.")
 
-    else:
+        else:
+            with st.spinner(
+                f"Hämtar bolagsinformation för {test_symbol}..."
+            ):
+                try:
+                    fundamental_result = analyze_fundamentals(
+                        test_symbol
+                    )
 
-        with st.spinner(
-            f"Hämtar bolagsinformation för {test_symbol}..."
-        ):
+                    st.session_state["fundamental_result"] = (
+                        fundamental_result
+                    )
 
-            try:
+                except Exception as error:
+                    st.error("Fundamentalanalysen misslyckades.")
+                    st.exception(error)
 
-                fundamental_result = analyze_fundamentals(
-                    test_symbol
-                )
-
-                st.session_state["fundamental_result"] = (
-                    fundamental_result
-                )
-
-            except Exception as error:
-
-                st.error("Fundamentalanalysen misslyckades.")
-                st.exception(error)
+else:
+    st.warning(
+        "Fundamental Analyzer är tillfälligt otillgänglig. "
+        "Discovery Engine kan fortfarande användas."
+    )
 
 
 # --------------------------------------------------
@@ -381,7 +396,7 @@ if fundamental_result:
 
         st.subheader(
             f"📋 Fundamental analys: "
-            f"{fundamental_result.get('company', test_symbol)}"
+            f"{fundamental_result.get('company', 'Okänt bolag')}"
         )
 
         col1, col2, col3 = st.columns(3)
@@ -491,7 +506,6 @@ if fundamental_result:
 # --------------------------------------------------
 
 st.divider()
-
 st.subheader("💼 Investeringsportfölj")
 
 st.write(
