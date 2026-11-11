@@ -1,4 +1,5 @@
-
+import os
+st.write("FILER I APPEN:", os.listdir())
 import streamlit as st
 import pandas as pd
 
