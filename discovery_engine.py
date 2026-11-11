@@ -1,20 +1,21 @@
 
 """
 AI Investment Office
-Discovery Engine – Version 1.0
+Discovery Engine – Version 2.0
 
-Scans a selected global stock universe and ranks candidates
-for further analysis. This module does not execute trades.
+Dynamic stock discovery and technical candidate ranking.
+Paper analysis only. No real trades.
 """
 
 import pandas as pd
 import numpy as np
 
 from market_data import get_stock_data
+from universe_builder import build_discovery_universe
 
 
 # --------------------------------------------------
-# INVESTMENT UNIVERSE
+# ORIGINAL WATCHLIST
 # --------------------------------------------------
 
 DEFAULT_UNIVERSE = {
@@ -57,11 +58,10 @@ DEFAULT_UNIVERSE = {
 
 
 # --------------------------------------------------
-# TECHNICAL INDICATORS
+# RSI CALCULATION
 # --------------------------------------------------
 
 def calculate_rsi(prices, period=14):
-    """Calculate Relative Strength Index."""
 
     delta = prices.diff()
 
@@ -80,20 +80,21 @@ def calculate_rsi(prices, period=14):
         adjust=False
     ).mean()
 
-    relative_strength = average_gain / average_loss.replace(0, np.nan)
+    relative_strength = (
+        average_gain / average_loss.replace(0, np.nan)
+    )
 
-    rsi = 100 - (100 / (1 + relative_strength))
-
-    return rsi
+    return 100 - (100 / (1 + relative_strength))
 
 
 # --------------------------------------------------
-# ANALYZE ONE ASSET
+# ANALYZE ONE STOCK
 # --------------------------------------------------
 
 def analyze_candidate(symbol, company_name):
 
     try:
+
         data = get_stock_data(symbol, period="6mo")
 
         if data is None or data.empty:
@@ -103,7 +104,8 @@ def analyze_candidate(symbol, company_name):
             return None
 
         prices = pd.to_numeric(
-            data["Close"], errors="coerce"
+            data["Close"],
+            errors="coerce"
         ).dropna()
 
         if len(prices) < 60:
@@ -114,8 +116,8 @@ def analyze_candidate(symbol, company_name):
         if current_price <= 0:
             return None
 
-        sma20 = prices.rolling(20).mean().iloc[-1]
-        sma50 = prices.rolling(50).mean().iloc[-1]
+        sma20 = float(prices.rolling(20).mean().iloc[-1])
+        sma50 = float(prices.rolling(50).mean().iloc[-1])
 
         return_20 = (
             current_price / float(prices.iloc[-21]) - 1
@@ -125,100 +127,105 @@ def analyze_candidate(symbol, company_name):
             current_price / float(prices.iloc[-60]) - 1
         ) * 100
 
-        rsi_series = calculate_rsi(prices)
-        rsi = rsi_series.iloc[-1]
+        rsi = calculate_rsi(prices).iloc[-1]
 
         if pd.isna(rsi) or pd.isna(sma20) or pd.isna(sma50):
             return None
 
-        # Volatility based on daily returns
         daily_returns = prices.pct_change().dropna()
 
         volatility = float(
             daily_returns.tail(30).std() * np.sqrt(252) * 100
         )
 
-        # Volume analysis, if available
         volume_ratio = None
 
         if "Volume" in data.columns:
+
             volumes = pd.to_numeric(
-                data["Volume"], errors="coerce"
+                data["Volume"],
+                errors="coerce"
             ).dropna()
 
             if len(volumes) >= 20:
+
                 average_volume = volumes.tail(20).mean()
-                latest_volume = volumes.iloc[-1]
 
                 if average_volume > 0:
                     volume_ratio = float(
-                        latest_volume / average_volume
+                        volumes.iloc[-1] / average_volume
                     )
 
-        # --------------------------------------------------
-        # DISCOVERY SCORE
-        # --------------------------------------------------
+        # ------------------------------------------
+        # SCORING
+        # ------------------------------------------
 
         score = 0
         reasons = []
 
-        # 1. Long-term trend: maximum 25 points
+        # Trend
         if current_price > sma50:
             score += 15
             reasons.append("Kurs över 50-dagars medelvärde")
 
         if sma20 > sma50:
             score += 10
-            reasons.append("Positiv trend mellan medelvärden")
+            reasons.append("Positiv trend")
 
-        # 2. Short-term momentum: maximum 30 points
+        # Momentum
         if return_20 > 5:
             score += 15
-            reasons.append("Stark utveckling senaste 20 dagarna")
+            reasons.append("Starkt momentum på 20 dagar")
         elif return_20 > 0:
             score += 8
 
         if return_60 > 10:
             score += 15
-            reasons.append("Stark utveckling senaste 60 dagarna")
+            reasons.append("Stark utveckling på 60 dagar")
         elif return_60 > 0:
             score += 8
 
-        # 3. RSI: maximum 15 points
+        # RSI
         if 50 <= rsi <= 65:
             score += 15
-            reasons.append("Positivt momentum utan extrem RSI")
+            reasons.append("Positiv RSI utan extrem nivå")
         elif 45 <= rsi < 50 or 65 < rsi <= 70:
             score += 10
         elif 40 <= rsi < 45 or 70 < rsi <= 75:
             score += 5
 
-        # 4. Trading volume: maximum 10 points
+        # Volume
         if volume_ratio is not None:
+
             if 1.2 <= volume_ratio <= 2.5:
                 score += 10
                 reasons.append("Ökad handelsvolym")
+
             elif volume_ratio > 1:
                 score += 5
 
-        # 5. Volatility / risk: maximum 20 points
+        # Volatility
         if volatility < 20:
             score += 20
-            reasons.append("Relativt låg kursvolatilitet")
+            reasons.append("Relativt låg volatilitet")
+
         elif volatility < 30:
             score += 15
+
         elif volatility < 45:
             score += 10
+
         elif volatility < 60:
             score += 5
 
         score = min(score, 100)
 
-        # Classification is for research prioritization only
         if score >= 75:
             classification = "Hög analysprioritet"
+
         elif score >= 55:
             classification = "Möjlig kandidat"
+
         else:
             classification = "Låg prioritet"
 
@@ -247,25 +254,40 @@ def analyze_candidate(symbol, company_name):
 # GLOBAL DISCOVERY SCAN
 # --------------------------------------------------
 
-def run_discovery_scan(universe=None):
+def run_discovery_scan(
+    universe=None,
+    dynamic_discovery=True,
+    max_per_screen=20
+):
 
-    if universe is None:
-        universe = DEFAULT_UNIVERSE
+    base_universe = dict(universe or DEFAULT_UNIVERSE)
+
+    discovery_info = None
+
+    if dynamic_discovery:
+
+        discovery_info = build_discovery_universe(
+            base_universe=base_universe,
+            max_per_screen=max_per_screen
+        )
+
+        selected_universe = discovery_info["universe"]
+
+    else:
+
+        selected_universe = base_universe
 
     results = []
     errors = []
 
-    for symbol, company_name in universe.items():
+    for symbol, company_name in selected_universe.items():
 
-        try:
-            candidate = analyze_candidate(symbol, company_name)
+        candidate = analyze_candidate(symbol, company_name)
 
-            if candidate is not None:
-                results.append(candidate)
-            else:
-                errors.append(symbol)
+        if candidate is not None:
+            results.append(candidate)
 
-        except Exception:
+        else:
             errors.append(symbol)
 
     results.sort(
@@ -275,14 +297,15 @@ def run_discovery_scan(universe=None):
 
     return {
         "success": True,
-        "scanned": len(universe),
+        "scanned": len(selected_universe),
         "successful": len(results),
         "failed": len(errors),
         "candidates": results,
         "errors": errors,
+        "discovery_info": discovery_info,
         "message": (
-            "Analysen är klar. Kandidaterna behöver "
-            "ytterligare granskning innan investeringsbeslut."
+            "Dynamisk marknadsskanning genomförd. "
+            "Kandidaterna behöver ytterligare analys."
         ),
         "status": "PAPER ANALYSIS ONLY - NO REAL TRADES",
     }
@@ -297,3 +320,4 @@ def get_top_opportunities(limit=10):
     result = run_discovery_scan()
 
     return result["candidates"][:limit]
+
