@@ -2,12 +2,12 @@
 
 """
 AI Investment Office
-Main Streamlit Dashboard
+Huvudpanel för Streamlit
 
-Connects analysis, risk management,
-portfolio management and paper trading.
+Kopplar samman analys, riskhantering,
+portföljhantering och simulerad handel.
 
-Paper trading only. No real orders are placed.
+Endast simulerad handel. Inga riktiga order läggs.
 """
 
 import streamlit as st
@@ -27,7 +27,7 @@ STARTING_CAPITAL = 10000.0
 
 
 # --------------------------------------------------
-# PAGE CONFIGURATION
+# SIDINSTÄLLNINGAR
 # --------------------------------------------------
 
 st.set_page_config(
@@ -37,23 +37,24 @@ st.set_page_config(
 )
 
 st.title("🏦 AI INVESTMENT OFFICE")
-st.subheader("Your Personal Investment Dashboard")
+st.subheader("Ditt personliga investeringskontor")
 
 st.info(
-    "PAPER TRADING MODE – Simulated investments only. "
-    "No real money or broker orders are involved."
+    "SIMULERAT HANDELSLÄGE – Endast investeringar i en "
+    "simulerad miljö. Inga riktiga pengar eller "
+    "mäklarorder används."
 )
 
 
 # --------------------------------------------------
-# LOAD PORTFOLIO
+# HÄMTA PORTFÖLJ
 # --------------------------------------------------
 
 try:
     portfolio = calculate_portfolio(STARTING_CAPITAL)
 
 except Exception as error:
-    st.error(f"Could not load portfolio: {error}")
+    st.error(f"Kunde inte läsa in portföljen: {error}")
     st.stop()
 
 
@@ -62,47 +63,47 @@ if "trade_message" in st.session_state:
 
 
 # --------------------------------------------------
-# PORTFOLIO OVERVIEW
+# PORTFÖLJÖVERSIKT
 # --------------------------------------------------
 
-st.header("💼 Portfolio Overview")
+st.header("💼 Portföljöversikt")
 
 col1, col2, col3, col4 = st.columns(4)
 
 col1.metric(
-    "Starting Capital",
-    f"{portfolio['starting_capital']:,.2f} SEK"
+    "Startkapital",
+    f"{portfolio['starting_capital']:,.2f} kr"
 )
 
 col2.metric(
-    "Available Cash",
-    f"{portfolio['cash']:,.2f} SEK"
+    "Tillgängligt kapital",
+    f"{portfolio['cash']:,.2f} kr"
 )
 
 col3.metric(
-    "Invested Amount",
-    f"{portfolio['total_invested']:,.2f} SEK"
+    "Investerat belopp",
+    f"{portfolio['total_invested']:,.2f} kr"
 )
 
 col4.metric(
-    "Open Positions",
+    "Öppna positioner",
     portfolio["number_of_positions"]
 )
 
 if portfolio["holdings"]:
-    st.subheader("Current Holdings")
+    st.subheader("Nuvarande innehav")
     st.dataframe(
         portfolio["holdings"],
         use_container_width=True,
         hide_index=True
     )
 else:
-    st.info("No investments have been recorded yet.")
+    st.info("Inga investeringar har registrerats ännu.")
 
 if portfolio["rejected_trades"]:
     st.warning(
-        "Some historical trades were rejected. "
-        "Check the trade history before continuing."
+        "Vissa historiska transaktioner har avvisats. "
+        "Kontrollera transaktionshistoriken innan du fortsätter."
     )
     st.write(portfolio["rejected_trades"])
 
@@ -111,10 +112,10 @@ st.divider()
 
 
 # --------------------------------------------------
-# RISK MANAGEMENT
+# RISKHANTERING
 # --------------------------------------------------
 
-st.header("🛡️ Risk Management")
+st.header("🛡️ Riskhantering")
 
 settings = RiskSettings(
     starting_capital=STARTING_CAPITAL
@@ -129,24 +130,24 @@ risk_status = check_portfolio_risk(
 risk_col1, risk_col2 = st.columns(2)
 
 risk_col1.metric(
-    "Maximum Risk Per Trade",
+    "Maximal risk per affär",
     f"{settings.risk_per_trade * 100:.1f}%"
 )
 
 risk_col2.metric(
-    "Maximum Portfolio Exposure",
+    "Maximal portföljexponering",
     f"{settings.max_total_exposure * 100:.0f}%"
 )
 
 if risk_status["approved"]:
     st.success(
-        f"Remaining investment capacity: "
-        f"{risk_status['remaining_capacity']:,.2f} SEK"
+        f"Återstående investeringsutrymme: "
+        f"{risk_status['remaining_capacity']:,.2f} kr"
     )
 else:
     st.warning(
-        "The portfolio has reached its maximum "
-        "investment exposure."
+        "Portföljen har nått sin maximala "
+        "investeringsgräns."
     )
 
 
@@ -154,44 +155,44 @@ st.divider()
 
 
 # --------------------------------------------------
-# MARKET ANALYSIS
+# MARKNADSANALYS
 # --------------------------------------------------
 
-st.header("📊 Market Analysis")
+st.header("📊 Marknadsanalys")
 
 st.caption(
-    "Automatic historical stock prices are currently "
-    "retrieved through Yahoo Finance."
+    "Historiska aktiekurser hämtas automatiskt "
+    "via Yahoo Finance."
 )
 
 symbol = st.text_input(
-    "Stock ticker",
+    "Aktiens börskod",
     value="VOLV-B.ST"
 ).strip().upper()
 
 headlines_text = st.text_area(
-    "Financial news headlines (optional)",
+    "Finansiella nyhetsrubriker (valfritt)",
     placeholder=(
-        "Enter one headline per line.\n"
-        "Example: Company reports strong results"
+        "Skriv en nyhetsrubrik per rad.\n"
+        "Exempel: Företaget rapporterar starka resultat"
     )
 )
 
 stop_loss_percent = st.slider(
-    "Proposed stop-loss distance (%)",
+    "Föreslaget avstånd till stop-loss (%)",
     min_value=1,
     max_value=20,
     value=5,
     step=1
 )
 
-if st.button("Analyze Investment", type="primary"):
+if st.button("Analysera investering", type="primary"):
 
     if not symbol:
-        st.error("Please enter a valid stock ticker.")
+        st.error("Ange en giltig börskod.")
 
     else:
-        with st.spinner("Analyzing market data..."):
+        with st.spinner("Analyserar marknadsdata..."):
 
             prices = get_closing_prices(
                 symbol,
@@ -200,8 +201,8 @@ if st.button("Analyze Investment", type="primary"):
 
             if len(prices) < 50:
                 st.error(
-                    "Not enough historical price data. "
-                    "At least 50 closing prices are required."
+                    "Det finns inte tillräckligt med historiska "
+                    "kursdata. Minst 50 stängningskurser krävs."
                 )
 
             else:
@@ -227,67 +228,78 @@ if st.button("Analyze Investment", type="primary"):
                     st.error(result["explanation"])
 
                 else:
-                    st.subheader("Analysis Results")
+                    st.subheader("Analysresultat")
 
                     price_col, sma20_col, sma50_col = st.columns(3)
 
                     price_col.metric(
-                        "Latest Price",
+                        "Senaste kurs",
                         f"{current_price:.2f}"
                     )
 
                     sma20_col.metric(
-                        "20-Day Average",
+                        "20-dagars medelvärde",
                         f"{sma20:.2f}"
                     )
 
                     sma50_col.metric(
-                        "50-Day Average",
+                        "50-dagars medelvärde",
                         f"{sma50:.2f}"
                     )
 
-                    st.subheader("Investment Recommendation")
+                    st.subheader("Investeringsrekommendation")
 
                     recommendation = result["recommendation"]
 
                     if recommendation == "BUY":
-                        st.success("BUY SIGNAL")
+                        st.success("KÖPSIGNAL")
 
                     elif recommendation == "SELL":
-                        st.error("SELL SIGNAL")
+                        st.error("SÄLJSIGNAL")
 
                     else:
-                        st.warning("HOLD SIGNAL")
+                        st.warning("AVVAKTA")
+
+                    signal_translation = {
+                        "BUY": "KÖP",
+                        "SELL": "SÄLJ",
+                        "HOLD": "AVVAKTA"
+                    }
+
+                    technical_signal = result["technical_signal"]
 
                     st.write(
-                        "Technical signal:",
-                        result["technical_signal"]
+                        "Teknisk signal:",
+                        signal_translation.get(
+                            technical_signal,
+                            technical_signal
+                        )
                     )
 
                     st.write(
-                        "Technical score:",
+                        "Tekniskt analysbetyg:",
                         result["technical_score"]
                     )
 
                     st.write(
-                        "News score:",
+                        "Nyhetsbetyg:",
                         result["news_score"]
                     )
 
                     st.write(
-                        "Combined score:",
+                        "Sammanvägt analysbetyg:",
                         result["combined_score"]
                     )
 
                     st.write(result["explanation"])
 
                     st.caption(
-                        "News analysis uses simple keywords, "
-                        "not a full AI model. Headlines must "
-                        "be supplied manually."
+                        "Nyhetsanalysen använder enkla sökord "
+                        "och är inte en fullständig AI-modell. "
+                        "Nyhetsrubriker måste anges manuellt."
                     )
 
-                    # Calculate illustrative position size
+                    # Beräkna illustrativ positionsstorlek
                     risk_result = calculate_position_size(
                         capital=portfolio["cash"],
                         price=current_price,
@@ -297,23 +309,23 @@ if st.button("Analyze Investment", type="primary"):
                         settings=settings
                     )
 
-                    st.subheader("Position Sizing")
+                    st.subheader("Positionsberäkning")
 
                     if risk_result["approved"]:
 
                         st.metric(
-                            "Illustrative Position Value",
-                            f"{risk_result['position_value']:,.2f} SEK"
+                            "Beräknat positionsvärde",
+                            f"{risk_result['position_value']:,.2f} kr"
                         )
 
                         st.metric(
-                            "Illustrative Number of Units",
+                            "Beräknat antal enheter",
                             f"{risk_result['units']:.4f}"
                         )
 
                         st.caption(
-                            "Calculation only. This does not "
-                            "place or authorize an order."
+                            "Detta är endast en beräkning. "
+                            "Ingen order läggs eller godkänns."
                         )
 
                     else:
@@ -324,80 +336,91 @@ st.divider()
 
 
 # --------------------------------------------------
-# PAPER TRADING
+# SIMULERAD HANDEL
 # --------------------------------------------------
 
-st.header("📝 Paper Trading")
+st.header("📝 Simulerad handel")
 
 st.warning(
-    "All transactions below are simulated. "
-    "Nothing is sent to Nordnet."
+    "Alla transaktioner nedan är simulerade. "
+    "Ingenting skickas till Nordnet."
 )
 
 with st.form("paper_trade_form"):
 
     action = st.selectbox(
-        "Transaction",
-        ["BUY", "SELL"]
+        "Transaktion",
+        ["BUY", "SELL"],
+        format_func=lambda x: {
+            "BUY": "KÖP",
+            "SELL": "SÄLJ"
+        }[x]
     )
 
     ticker = st.text_input(
-        "Instrument ticker",
-        placeholder="Example: VOLV-B.ST"
+        "Instrumentets börskod",
+        placeholder="Exempel: VOLV-B.ST"
     )
 
     asset_type = st.selectbox(
-        "Investment type",
+        "Investeringstyp",
         [
             "stock",
             "gold",
             "silver",
             "oil",
             "crypto_certificate"
-        ]
+        ],
+        format_func=lambda x: {
+            "stock": "Aktier",
+            "gold": "Guld",
+            "silver": "Silver",
+            "oil": "Olja",
+            "crypto_certificate": "Kryptocertifikat"
+        }[x]
     )
 
     quantity = st.number_input(
-        "Quantity",
+        "Antal",
         min_value=0.000001,
         value=1.0,
         step=1.0
     )
 
     price = st.number_input(
-        "Price per unit (SEK)",
+        "Pris per enhet (kr)",
         min_value=0.000001,
         value=100.0,
         step=1.0
     )
 
     isk_verified = st.checkbox(
-        "I have verified that this exact instrument "
-        "is eligible for ISK."
+        "Jag har kontrollerat att exakt detta instrument "
+        "är tillåtet på ISK."
     )
 
     broker_verified = st.checkbox(
-        "I have verified that this exact instrument "
-        "is available at Nordnet."
+        "Jag har kontrollerat att exakt detta instrument "
+        "finns tillgängligt hos Nordnet."
     )
 
     leveraged = st.checkbox(
-        "This instrument uses leverage."
+        "Detta instrument använder hävstång."
     )
 
     submitted = st.form_submit_button(
-        "Record Simulated Transaction"
+        "Registrera simulerad transaktion"
     )
 
     if submitted:
 
         if not ticker.strip():
-            st.error("Please enter an instrument ticker.")
+            st.error("Ange instrumentets börskod.")
 
         elif not isk_verified or not broker_verified:
             st.error(
-                "Both ISK eligibility and Nordnet availability "
-                "must be verified before recording."
+                "Både ISK-behörighet och tillgänglighet "
+                "hos Nordnet måste kontrolleras först."
             )
 
         else:
@@ -426,12 +449,12 @@ st.divider()
 
 
 # --------------------------------------------------
-# FOOTER
+# SIDFOT
 # --------------------------------------------------
 
 st.caption(
-    "AI Investment Office | Paper Trading Only | "
-    "Starting Capital: 10,000 SEK | "
-    "No real broker connection | "
-    "Research and educational prototype"
+    "AI Investment Office | Endast simulerad handel | "
+    "Startkapital: 10 000 kr | "
+    "Ingen verklig mäklarkoppling | "
+    "Analys- och utbildningsprototyp"
 )
