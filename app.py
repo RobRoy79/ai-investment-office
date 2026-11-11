@@ -1,17 +1,35 @@
 
 import os
+import sys
+import importlib
+
 import streamlit as st
 import pandas as pd
 
 from datetime import datetime
+
+# --------------------------------------------------
+# PROJECT PATH
+# --------------------------------------------------
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+
+importlib.invalidate_caches()
+
 from discovery_engine import run_discovery_scan
 
-# Fundamental Analyzer – appen ska kunna starta även
-# om denna fil ännu inte finns i Streamlits miljö.
+# --------------------------------------------------
+# FUNDAMENTAL ANALYZER IMPORT
+# --------------------------------------------------
+
 try:
     from fundamental_analyzer import analyze_fundamentals
     FUNDAMENTAL_ANALYZER_AVAILABLE = True
     FUNDAMENTAL_IMPORT_ERROR = None
+
 except ModuleNotFoundError as error:
     analyze_fundamentals = None
     FUNDAMENTAL_ANALYZER_AVAILABLE = False
@@ -75,19 +93,25 @@ st.divider()
 
 
 # --------------------------------------------------
-# TEMPORARY FILE DIAGNOSTICS
+# TECHNICAL FILE DIAGNOSTICS
 # --------------------------------------------------
 
 with st.expander("Teknisk filkontroll"):
-    files = sorted(os.listdir())
-    st.write("Filer som Streamlit hittar:")
+
+    st.write("Appens projektmapp:")
+    st.code(APP_DIR)
+
+    files = sorted(os.listdir(APP_DIR))
+
+    st.write("Filer som finns i appens projektmapp:")
     st.code("\n".join(files))
+
+    st.write("Pythons importsökväg:")
+    st.code("\n".join(sys.path))
 
     if not FUNDAMENTAL_ANALYZER_AVAILABLE:
         st.error(
-            "Fundamental Analyzer kunde inte laddas. "
-            "Kontrollera att fundamental_analyzer.py "
-            "finns i projektets rotmapp."
+            "Fundamental Analyzer kunde inte laddas."
         )
         st.code(FUNDAMENTAL_IMPORT_ERROR)
 
@@ -188,9 +212,7 @@ if result:
         f"Misslyckade datahämtningar: {result.get('failed', 0)}"
     )
 
-    # ----------------------------------------------
     # SCREENING DIAGNOSTICS
-    # ----------------------------------------------
 
     st.divider()
     st.subheader("🕵️ Resultat från de dynamiska sökningarna")
@@ -231,9 +253,7 @@ if result:
             "Inga tekniska fel rapporterades av screeningarna."
         )
 
-    # ----------------------------------------------
     # TECHNICAL ANALYSIS
-    # ----------------------------------------------
 
     st.divider()
     st.subheader("📈 Analyserade aktier")
@@ -256,7 +276,6 @@ if result:
             "volatility"
         ]
 
-        # Missing columns should not crash the app.
         df = df.reindex(columns=display_columns)
 
         df = df.rename(columns={
@@ -531,4 +550,5 @@ st.caption(
     "AI Investment Office | Paper Analysis Only | "
     "Inga riktiga order genomförs."
 )
+
 
