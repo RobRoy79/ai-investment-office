@@ -1,5 +1,4 @@
 
-
 import streamlit as st
 import pandas as pd
 
@@ -21,7 +20,7 @@ STARTING_CAPITAL = 10000
 
 
 # --------------------------------------------------
-# DESIGN
+# HEADER
 # --------------------------------------------------
 
 st.title("📈 AI Investment Office")
@@ -32,8 +31,8 @@ st.caption(
 )
 
 st.info(
-    "Analysen är ett beslutsunderlag och inte en köporder. "
-    "Systemet använder endast pappersanalys."
+    "Systemet utför endast analyser och pappershandel. "
+    "Inga riktiga köp eller försäljningar genomförs."
 )
 
 st.divider()
@@ -45,24 +44,18 @@ st.divider()
 
 st.subheader("🌍 Global marknadsskanning")
 
-st.write(
-    "Låt systemet söka efter intressanta aktier "
-    "på svenska, amerikanska och europeiska marknader."
-)
-
 col1, col2 = st.columns(2)
 
 with col1:
-    st.metric(
-        "Startkapital",
-        f"{STARTING_CAPITAL:,.0f} kr"
-    )
+    st.metric("Startkapital", f"{STARTING_CAPITAL:,.0f} kr")
 
 with col2:
-    st.metric(
-        "Handelstyp",
-        "Paper trading"
-    )
+    st.metric("Handelstyp", "Paper trading")
+
+st.write(
+    "Systemet kombinerar en grundlista med dynamisk sökning "
+    "efter nya aktiekandidater."
+)
 
 st.divider()
 
@@ -71,11 +64,11 @@ st.divider()
 # DISCOVERY ENGINE
 # --------------------------------------------------
 
-st.subheader("🔎 AI Discovery Engine")
+st.subheader("🔎 Discovery Engine")
 
 st.write(
-    "Discovery Engine rangordnar aktier efter trend, "
-    "momentum, handelsvolym och volatilitet."
+    "Sökningen försöker hitta nya småbolag, "
+    "tillväxtbolag och undervärderade tillväxtbolag."
 )
 
 if st.button(
@@ -85,33 +78,28 @@ if st.button(
 ):
 
     with st.spinner(
-        "Söker igenom marknaden. Detta kan ta en stund..."
+        "Söker efter nya aktier och analyserar marknaden..."
     ):
 
         try:
-            result = run_discovery_scan()
 
-            if result.get("success"):
+            result = run_discovery_scan(
+                dynamic_discovery=True,
+                max_per_screen=20
+            )
 
-                st.session_state["discovery_result"] = result
+            st.session_state["discovery_result"] = result
 
-                st.success(
-                    "Skanningen är klar!"
-                )
-
-            else:
-                st.error(
-                    "Skanningen kunde inte slutföras."
-                )
+            st.success("Skanningen är genomförd.")
 
         except Exception as error:
-            st.error(
-                f"Ett fel uppstod: {error}"
-            )
+
+            st.error("Ett fel uppstod under skanningen.")
+            st.exception(error)
 
 
 # --------------------------------------------------
-# RESULTS
+# DISPLAY RESULTS
 # --------------------------------------------------
 
 result = st.session_state.get("discovery_result")
@@ -120,27 +108,120 @@ if result:
 
     st.divider()
 
-    st.subheader("📊 Resultat från marknadsskanningen")
+    st.subheader("📊 Sammanfattning")
 
-    col1, col2, col3 = st.columns(3)
+    discovery_info = result.get("discovery_info") or {}
+
+    initial_count = discovery_info.get(
+        "initial_count", 0
+    )
+
+    total_count = discovery_info.get(
+        "total_count", result.get("scanned", 0)
+    )
+
+    new_candidates = discovery_info.get(
+        "new_candidates", 0
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric(
-            "Analyserade aktier",
-            result.get("successful", 0)
+            "Ursprungliga aktier",
+            initial_count
         )
 
     with col2:
         st.metric(
-            "Misslyckade hämtningar",
-            result.get("failed", 0)
+            "Nya kandidater",
+            new_candidates
         )
 
     with col3:
         st.metric(
-            "Totalt i universum",
-            result.get("scanned", 0)
+            "Totalt insamlade",
+            total_count
         )
+
+    with col4:
+        st.metric(
+            "Analyserade",
+            result.get("successful", 0)
+        )
+
+    st.write(
+        f"Misslyckade datahämtningar: "
+        f"{result.get('failed', 0)}"
+    )
+
+    # ----------------------------------------------
+    # SCREENING DIAGNOSTICS
+    # ----------------------------------------------
+
+    st.divider()
+
+    st.subheader("🕵️ Resultat från de dynamiska sökningarna")
+
+    screen_results = discovery_info.get(
+        "screen_results", {}
+    )
+
+    screen_names = {
+        "small_cap_gainers": "Småbolag med kursuppgång",
+        "growth_technology_stocks": "Teknik- och tillväxtbolag",
+        "undervalued_growth_stocks": "Undervärderade tillväxtbolag"
+    }
+
+    if screen_results:
+
+        for screen_name, count in screen_results.items():
+
+            readable_name = screen_names.get(
+                screen_name, screen_name
+            )
+
+            st.write(
+                f"**{readable_name}:** {count} aktier hittades"
+            )
+
+    else:
+
+        st.warning(
+            "Inga resultat från screeningarna kunde visas."
+        )
+
+    screening_errors = discovery_info.get("errors", [])
+
+    if screening_errors:
+
+        st.error(
+            f"{len(screening_errors)} sökning(ar) rapporterade fel."
+        )
+
+        for error in screening_errors:
+
+            with st.expander(
+                f"Fel i sökning: {error.get('screen', 'Okänd')}"
+            ):
+
+                st.code(
+                    error.get("error", "Okänt fel")
+                )
+
+    else:
+
+        st.success(
+            "Inga tekniska fel rapporterades av screeningarna."
+        )
+
+    # ----------------------------------------------
+    # ANALYSIS RESULTS
+    # ----------------------------------------------
+
+    st.divider()
+
+    st.subheader("📈 Analyserade aktier")
 
     candidates = result.get("candidates", [])
 
@@ -167,7 +248,7 @@ if result:
             "symbol": "Aktie",
             "price": "Senaste kurs",
             "discovery_score": "Poäng",
-            "classification": "Prioritet",
+            "classification": "Analysprioritet",
             "return_20d": "Utveckling 20 dagar %",
             "return_60d": "Utveckling 60 dagar %",
             "rsi": "RSI",
@@ -180,7 +261,7 @@ if result:
             hide_index=True
         )
 
-        st.subheader("⭐ Intressantaste kandidaterna")
+        st.subheader("⭐ Fem högst rankade kandidater")
 
         for candidate in candidates[:5]:
 
@@ -190,39 +271,46 @@ if result:
             ):
 
                 st.write(
-                    f"**Aktie:** {candidate['symbol']}"
+                    f"**Aktiesymbol:** {candidate['symbol']}"
                 )
 
                 st.write(
-                    f"**Prioritet:** {candidate['classification']}"
+                    f"**Analysprioritet:** "
+                    f"{candidate['classification']}"
                 )
 
                 st.write(
-                    f"**Kurs:** {candidate['price']}"
+                    f"**Senaste kurs:** {candidate['price']}"
                 )
 
                 st.write(
                     f"**RSI:** {candidate['rsi']}"
                 )
 
-                st.write("**Analysens positiva faktorer:**")
+                st.write("**Identifierade faktorer:**")
 
-                if candidate["reasons"]:
-
-                    for reason in candidate["reasons"]:
-                        st.write(f"• {reason}")
-
-                else:
-                    st.write(
-                        "Inga särskilda positiva faktorer identifierades."
-                    )
+                for reason in candidate.get("reasons", []):
+                    st.write(f"• {reason}")
 
     else:
 
         st.warning(
-            "Inga aktier kunde analyseras. "
-            "Kontrollera marknadsdata och försök igen."
+            "Inga aktier kunde analyseras."
         )
+
+    # ----------------------------------------------
+    # FAILED STOCKS
+    # ----------------------------------------------
+
+    failed_stocks = result.get("errors", [])
+
+    if failed_stocks:
+
+        with st.expander(
+            f"Visa aktier som inte kunde analyseras ({len(failed_stocks)})"
+        ):
+
+            st.write(", ".join(failed_stocks))
 
     st.caption(
         "Senaste skanning: "
@@ -239,15 +327,15 @@ st.divider()
 st.subheader("💼 Investeringsportfölj")
 
 st.write(
-    "Startkapitalet är inställt på 10 000 kr. "
-    "Portföljhantering och registrering av pappersaffärer "
-    "kopplas in i nästa utvecklingssteg."
+    "Startkapital: 10 000 kr. "
+    "Portföljhantering, riskanalys och pappersaffärer "
+    "byggs ut i kommande utvecklingssteg."
 )
 
 st.warning(
-    "Discovery Engine använder tekniska indikatorer. "
-    "Den gör ännu ingen fullständig fundamental analys "
-    "eller AI-baserad nyhetsanalys."
+    "Den nuvarande Discovery Engine använder tekniska "
+    "indikatorer. Den utför ännu inte fullständig "
+    "fundamental analys eller AI-baserad nyhetsanalys."
 )
 
 
@@ -258,6 +346,6 @@ st.warning(
 st.divider()
 
 st.caption(
-    "AI Investment Office | Version 1.0 | "
-    "Endast analys och pappershandel – inga riktiga order."
+    "AI Investment Office | Paper Analysis Only | "
+    "Inga riktiga order genomförs."
 )
