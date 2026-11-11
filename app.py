@@ -4,6 +4,7 @@ import pandas as pd
 
 from datetime import datetime
 from discovery_engine import run_discovery_scan
+from fundamental_analyzer import analyze_fundamentals
 
 
 # --------------------------------------------------
@@ -17,6 +18,30 @@ st.set_page_config(
 )
 
 STARTING_CAPITAL = 10000
+
+
+# --------------------------------------------------
+# DISPLAY HELPERS
+# --------------------------------------------------
+
+def format_number(value, decimals=2):
+    if value is None:
+        return "Saknas"
+
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return "Saknas"
+
+
+def format_percent(value):
+    if value is None:
+        return "Saknas"
+
+    try:
+        return f"{float(value) * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "Saknas"
 
 
 # --------------------------------------------------
@@ -90,6 +115,9 @@ if st.button(
 
             st.session_state["discovery_result"] = result
 
+            # Clear old fundamental results after a new scan
+            st.session_state.pop("fundamental_result", None)
+
             st.success("Skanningen är genomförd.")
 
         except Exception as error:
@@ -99,7 +127,7 @@ if st.button(
 
 
 # --------------------------------------------------
-# DISPLAY RESULTS
+# DISPLAY DISCOVERY RESULTS
 # --------------------------------------------------
 
 result = st.session_state.get("discovery_result")
@@ -112,47 +140,28 @@ if result:
 
     discovery_info = result.get("discovery_info") or {}
 
-    initial_count = discovery_info.get(
-        "initial_count", 0
-    )
-
+    initial_count = discovery_info.get("initial_count", 0)
     total_count = discovery_info.get(
         "total_count", result.get("scanned", 0)
     )
-
-    new_candidates = discovery_info.get(
-        "new_candidates", 0
-    )
+    new_candidates = discovery_info.get("new_candidates", 0)
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "Ursprungliga aktier",
-            initial_count
-        )
+        st.metric("Ursprungliga aktier", initial_count)
 
     with col2:
-        st.metric(
-            "Nya kandidater",
-            new_candidates
-        )
+        st.metric("Nya kandidater", new_candidates)
 
     with col3:
-        st.metric(
-            "Totalt insamlade",
-            total_count
-        )
+        st.metric("Totalt insamlade", total_count)
 
     with col4:
-        st.metric(
-            "Analyserade",
-            result.get("successful", 0)
-        )
+        st.metric("Analyserade", result.get("successful", 0))
 
     st.write(
-        f"Misslyckade datahämtningar: "
-        f"{result.get('failed', 0)}"
+        f"Misslyckade datahämtningar: {result.get('failed', 0)}"
     )
 
     # ----------------------------------------------
@@ -163,9 +172,7 @@ if result:
 
     st.subheader("🕵️ Resultat från de dynamiska sökningarna")
 
-    screen_results = discovery_info.get(
-        "screen_results", {}
-    )
+    screen_results = discovery_info.get("screen_results", {})
 
     screen_names = {
         "small_cap_gainers": "Småbolag med kursuppgång",
@@ -181,9 +188,7 @@ if result:
                 screen_name, screen_name
             )
 
-            st.write(
-                f"**{readable_name}:** {count} aktier hittades"
-            )
+            st.write(f"**{readable_name}:** {count} aktier hittades")
 
     else:
 
@@ -205,9 +210,7 @@ if result:
                 f"Fel i sökning: {error.get('screen', 'Okänd')}"
             ):
 
-                st.code(
-                    error.get("error", "Okänt fel")
-                )
+                st.code(error.get("error", "Okänt fel"))
 
     else:
 
@@ -216,7 +219,7 @@ if result:
         )
 
     # ----------------------------------------------
-    # ANALYSIS RESULTS
+    # TECHNICAL ANALYSIS
     # ----------------------------------------------
 
     st.divider()
@@ -270,22 +273,12 @@ if result:
                 f"{candidate['discovery_score']} poäng"
             ):
 
+                st.write(f"**Aktiesymbol:** {candidate['symbol']}")
                 st.write(
-                    f"**Aktiesymbol:** {candidate['symbol']}"
+                    f"**Analysprioritet:** {candidate['classification']}"
                 )
-
-                st.write(
-                    f"**Analysprioritet:** "
-                    f"{candidate['classification']}"
-                )
-
-                st.write(
-                    f"**Senaste kurs:** {candidate['price']}"
-                )
-
-                st.write(
-                    f"**RSI:** {candidate['rsi']}"
-                )
+                st.write(f"**Senaste kurs:** {candidate['price']}")
+                st.write(f"**RSI:** {candidate['rsi']}")
 
                 st.write("**Identifierade faktorer:**")
 
@@ -294,13 +287,7 @@ if result:
 
     else:
 
-        st.warning(
-            "Inga aktier kunde analyseras."
-        )
-
-    # ----------------------------------------------
-    # FAILED STOCKS
-    # ----------------------------------------------
+        st.warning("Inga aktier kunde analyseras.")
 
     failed_stocks = result.get("errors", [])
 
@@ -319,6 +306,186 @@ if result:
 
 
 # --------------------------------------------------
+# FUNDAMENTAL ANALYZER - SINGLE STOCK TEST
+# --------------------------------------------------
+
+st.divider()
+
+st.subheader("🏦 Fundamental Analyzer")
+
+st.write(
+    "Här testar vi den nya fundamentala analysmotorn "
+    "på ett bolag innan vi kopplar in hela aktieuniversumet."
+)
+
+test_symbol = st.text_input(
+    "Aktiesymbol att testa",
+    value="MSFT",
+    help="Exempel: MSFT, VOLV-B.ST eller NOVO-B.CO"
+).strip().upper()
+
+if st.button(
+    "Testa fundamental analys",
+    use_container_width=True
+):
+
+    if not test_symbol:
+
+        st.warning("Ange en aktiesymbol först.")
+
+    else:
+
+        with st.spinner(
+            f"Hämtar bolagsinformation för {test_symbol}..."
+        ):
+
+            try:
+
+                fundamental_result = analyze_fundamentals(
+                    test_symbol
+                )
+
+                st.session_state["fundamental_result"] = (
+                    fundamental_result
+                )
+
+            except Exception as error:
+
+                st.error("Fundamentalanalysen misslyckades.")
+                st.exception(error)
+
+
+# --------------------------------------------------
+# FUNDAMENTAL ANALYSIS RESULTS
+# --------------------------------------------------
+
+fundamental_result = st.session_state.get(
+    "fundamental_result"
+)
+
+if fundamental_result:
+
+    st.divider()
+
+    if not fundamental_result.get("success"):
+
+        st.error(
+            fundamental_result.get(
+                "message",
+                "Kunde inte hämta bolagsinformation."
+            )
+        )
+
+    else:
+
+        st.subheader(
+            f"📋 Fundamental analys: "
+            f"{fundamental_result.get('company', test_symbol)}"
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "Total fundamental poäng",
+                format_number(
+                    fundamental_result.get("fundamental_score"), 0
+                ) + " / 100"
+            )
+
+        with col2:
+            st.metric(
+                "Bolagskvalitet",
+                format_number(
+                    fundamental_result.get("quality_score"), 0
+                ) + " / 100"
+            )
+
+        with col3:
+            st.metric(
+                "Värderingspoäng",
+                format_number(
+                    fundamental_result.get("valuation_score"), 0
+                ) + " / 100"
+            )
+
+        st.write(
+            "**Bedömning:** "
+            + fundamental_result.get(
+                "classification", "Saknas"
+            )
+        )
+
+        st.write(
+            f"**Bransch:** "
+            f"{fundamental_result.get('industry') or 'Saknas'}"
+        )
+
+        st.write(
+            f"**Sektor:** "
+            f"{fundamental_result.get('sector') or 'Saknas'}"
+        )
+
+        st.write(
+            f"**Tillgängliga nyckeltal:** "
+            f"{fundamental_result.get('available_metrics', 0)}"
+        )
+
+        metrics = {
+            "Omsättningstillväxt": format_percent(
+                fundamental_result.get("revenue_growth")
+            ),
+            "Vinstmarginal": format_percent(
+                fundamental_result.get("profit_margin")
+            ),
+            "Rörelsemarginal": format_percent(
+                fundamental_result.get("operating_margin")
+            ),
+            "Avkastning på eget kapital": format_percent(
+                fundamental_result.get("return_on_equity")
+            ),
+            "Skuldsättning / eget kapital": format_number(
+                fundamental_result.get("debt_to_equity")
+            ),
+            "Kassalikviditetsindikator": format_number(
+                fundamental_result.get("current_ratio")
+            ),
+            "Fritt kassaflöde": format_number(
+                fundamental_result.get("free_cash_flow"), 0
+            ),
+            "P/E-tal": format_number(
+                fundamental_result.get("trailing_pe")
+            ),
+            "Framåtblickande P/E": format_number(
+                fundamental_result.get("forward_pe")
+            ),
+            "Pris / omsättning": format_number(
+                fundamental_result.get("price_to_sales")
+            ),
+            "EV / EBITDA": format_number(
+                fundamental_result.get("ev_to_ebitda")
+            ),
+        }
+
+        st.subheader("Finansiella nyckeltal")
+
+        metrics_df = pd.DataFrame(
+            list(metrics.items()),
+            columns=["Nyckeltal", "Värde"]
+        )
+
+        st.dataframe(
+            metrics_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.caption(
+            fundamental_result.get("message", "")
+        )
+
+
+# --------------------------------------------------
 # PORTFOLIO INFORMATION
 # --------------------------------------------------
 
@@ -333,9 +500,9 @@ st.write(
 )
 
 st.warning(
-    "Den nuvarande Discovery Engine använder tekniska "
-    "indikatorer. Den utför ännu inte fullständig "
-    "fundamental analys eller AI-baserad nyhetsanalys."
+    "Fundamentalanalysen är ett preliminärt urvalsverktyg. "
+    "Den ersätter inte fullständig bolagsanalys och "
+    "utgör inte en köp- eller säljrekommendation."
 )
 
 
@@ -349,3 +516,4 @@ st.caption(
     "AI Investment Office | Paper Analysis Only | "
     "Inga riktiga order genomförs."
 )
+
